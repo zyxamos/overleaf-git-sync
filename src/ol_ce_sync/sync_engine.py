@@ -213,6 +213,15 @@ class SyncEngine:
         current = git_ops.current_branch(self.repo_root)
         if current == config.git.remote_branch:
             self._ensure_on_branch(config.git.main_branch)
+        if not git_ops.has_diff_between(
+            self.repo_root,
+            config.git.remote_branch,
+            git_ops.current_branch(self.repo_root),
+        ):
+            self._write_metadata(config.sync.last_remote_snapshot_file, remote_commit)
+            self._write_metadata(config.sync.last_synced_file, git_ops.head_commit(self.repo_root))
+            info("Pull completed; local branch already matches the latest remote snapshot.")
+            return
         info(
             f"Staging {config.git.remote_branch} into {git_ops.current_branch(self.repo_root)}..."
         )

@@ -34,7 +34,7 @@ class OverleafBackend(Protocol):
     def upload_binary_file(self, project_id: str, path: str, content: bytes) -> None:
         """Create or update a binary asset."""
 
-    def create_folder(self, project_id: str, path: str) -> None:
+    def create_folder(self, project_id: str, path: str) -> object | None:
         """Create a folder if it does not already exist."""
 
     def delete_path(self, project_id: str, path: str) -> None:

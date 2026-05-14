@@ -136,6 +136,43 @@ def test_pull_noop_clears_merge_state(tmp_path: Path, monkeypatch: pytest.Monkey
     assert metadata_path.read_text(encoding="utf-8").strip() == previous_head
 
 
+def test_pull_noop_returns_without_opening_merge(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    prepare_synced_repo(repo)
+    monkeypatch.setattr(
+        "ol_ce_sync.sync_engine.create_backend",
+        lambda config: FakeBackend({"main.tex": b"base\n"}),
+    )
+
+    calls: list[tuple[str, bool]] = []
+    original_merge_branch = git_ops.merge_branch
+
+    def recording_merge_branch(
+        repo_path: Path,
+        branch: str,
+        *,
+        commit: bool = True,
+        allow_unrelated_histories: bool = False,
+    ) -> None:
+        calls.append((branch, commit))
+        return original_merge_branch(
+            repo_path,
+            branch,
+            commit=commit,
+            allow_unrelated_histories=allow_unrelated_histories,
+        )
+
+    monkeypatch.setattr("ol_ce_sync.sync_engine.git_ops.merge_branch", recording_merge_branch)
+
+    SyncEngine(repo).pull()
+
+    assert ("overleaf-remote", False) not in calls
+
+
 def test_init_appends_default_gitignore_entries(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

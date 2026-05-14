@@ -80,10 +80,10 @@ class HttpBackend:
     def upload_binary_file(self, project_id: str, path: str, content: bytes) -> None:
         self._write_file(project_id, path, content)
 
-    def create_folder(self, project_id: str, path: str) -> None:
+    def create_folder(self, project_id: str, path: str) -> HttpEntity:
         normalized = normalize_project_path(path)
         if not normalized:
-            return
+            return self._load_tree(project_id)
         current = self._load_tree(project_id)
         for part in PurePosixPath(normalized).parts:
             found = self._child_named(current, part, "folder")
@@ -98,6 +98,7 @@ class HttpBackend:
                 found = self._entity_from_response(response.json(), parent_path=current.path)
                 current.children.append(found)
             current = found
+        return current
 
     def delete_path(self, project_id: str, path: str) -> None:
         entity = self._find_entity(project_id, path)
@@ -119,10 +120,7 @@ class HttpBackend:
         new_path = normalize_project_path(new_path)
         new_parent = PurePosixPath(new_path).parent.as_posix()
         new_name = PurePosixPath(new_path).name
-        self.create_folder(project_id, "" if new_parent == "." else new_parent)
-        parent = self._find_folder(project_id, "" if new_parent == "." else new_parent)
-        if parent is None:
-            raise BackendError(f"Cannot find destination folder for {new_path}")
+        parent = self.create_folder(project_id, "" if new_parent == "." else new_parent)
 
         if entity.name != new_name:
             self._request(
@@ -149,10 +147,7 @@ class HttpBackend:
         parent_path = PurePosixPath(normalized).parent.as_posix()
         file_name = PurePosixPath(normalized).name
         parent_path = "" if parent_path == "." else parent_path
-        self.create_folder(project_id, parent_path)
-        parent = self._find_folder(project_id, parent_path)
-        if parent is None:
-            raise BackendError(f"Cannot find remote folder: {parent_path}")
+        parent = self.create_folder(project_id, parent_path)
 
         existing = self._find_entity(project_id, normalized)
         if existing is None:
@@ -335,17 +330,29 @@ class HttpBackend:
             path=self._join_path(parent_path, name),
         )
 
-    def _find_entity(self, project_id: str, path: str) -> HttpEntity | None:
+    def _find_entity(
+        self,
+        project_id: str,
+        path: str,
+        *,
+        refresh: bool = False,
+    ) -> HttpEntity | None:
         normalized = normalize_project_path(path)
         if not normalized:
-            return self._load_tree(project_id)
-        for entity in self._flatten_entities(self._load_tree(project_id)):
+            return self._load_tree(project_id, refresh=refresh)
+        for entity in self._flatten_entities(self._load_tree(project_id, refresh=refresh)):
             if entity.path == normalized:
                 return entity
         return None
 
-    def _find_folder(self, project_id: str, path: str) -> HttpEntity | None:
-        entity = self._find_entity(project_id, path)
+    def _find_folder(
+        self,
+        project_id: str,
+        path: str,
+        *,
+        refresh: bool = False,
+    ) -> HttpEntity | None:
+        entity = self._find_entity(project_id, path, refresh=refresh)
         if entity is None or entity.type != "folder":
             return None
         return entity

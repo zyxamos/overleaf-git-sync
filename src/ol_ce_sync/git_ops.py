@@ -116,6 +116,11 @@ def has_diff_between(repo: Path, base: str, head: str = "HEAD") -> bool:
     return result.returncode == 1
 
 
+def is_ancestor(repo: Path, ancestor: str, descendant: str = "HEAD") -> bool:
+    result = run_git(repo, ["merge-base", "--is-ancestor", ancestor, descendant], check=False)
+    return result.returncode == 0
+
+
 def sync_pathspecs(repo: Path) -> list[str]:
     entries = {
         child.name

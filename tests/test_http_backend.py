@@ -68,15 +68,41 @@ def test_http_backend_find_entity_by_path(tmp_path: Path) -> None:
     assert entity.id == "doc1"
 
 
+def test_create_folder_returns_new_folder_entity_without_requery(tmp_path: Path) -> None:
+    backend = make_backend(tmp_path)
+    backend._tree_cache = HttpEntity(
+        id="root",
+        name="root",
+        type="folder",
+        path="",
+        children=[],
+    )
+
+    def request(method: str, path: str, **kwargs):
+        class Response:
+            def json(self):
+                return {"_id": "folder-bib", "name": "Bib", "type": "folder"}
+
+        return Response()
+
+    backend._request = request
+
+    folder = backend.create_folder("project123", "Bib")
+
+    assert folder.id == "folder-bib"
+    assert folder.name == "Bib"
+    assert folder.type == "folder"
+
+
 def test_http_backend_replace_file_renames_old_to_backup_before_delete(tmp_path: Path) -> None:
     backend = make_backend(tmp_path)
     calls: list[tuple[str, str]] = []
     existing = HttpEntity(id="old-id", name="main.tex", type="doc", path="main.tex")
     parent = HttpEntity(id="root", name="root", type="folder", path="")
 
-    backend.create_folder = lambda project_id, path: None
-    backend._find_folder = lambda project_id, path: parent
-    backend._find_entity = lambda project_id, path: existing
+    backend.create_folder = lambda project_id, path: parent
+    backend._find_folder = lambda project_id, path, refresh=False: parent
+    backend._find_entity = lambda project_id, path, refresh=False: existing
 
     def upload(project_id: str, folder_id: str, file_name: str, content: bytes) -> HttpEntity:
         calls.append(("UPLOAD", file_name))
