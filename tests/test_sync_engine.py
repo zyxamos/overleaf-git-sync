@@ -328,6 +328,31 @@ def test_push_fast_skips_freshness_pull(tmp_path: Path, monkeypatch: pytest.Monk
     assert backend.text_writes["main.tex"] == "updated\n"
 
 
+def test_second_push_after_successful_push_does_not_create_synthetic_conflict(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    prepare_synced_repo(repo)
+    backend = RecordingBackend({"main.tex": b"base\n"})
+    monkeypatch.setattr("ol_ce_sync.sync_engine.create_backend", lambda config: backend)
+
+    write(repo / "main.tex", "v1\n")
+    commit_all(repo, "local update 1")
+    SyncEngine(repo).push(fast=True)
+
+    first_push_head = git_ops.head_commit(repo)
+    assert git_ops.head_commit(repo, "overleaf-remote") == first_push_head
+
+    write(repo / "main.tex", "v2\n")
+    commit_all(repo, "local update 2")
+
+    SyncEngine(repo).push()
+
+    assert backend.text_writes["main.tex"] == "v2\n"
+    assert git_ops.head_commit(repo, "overleaf-remote") == git_ops.head_commit(repo)
+
+
 def test_push_retries_verification_for_eventually_consistent_delete(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

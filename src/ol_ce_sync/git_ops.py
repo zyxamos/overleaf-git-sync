@@ -74,6 +74,10 @@ def switch_branch(repo: Path, branch: str) -> None:
     run_git(repo, ["switch", branch])
 
 
+def force_branch_to_ref(repo: Path, branch: str, ref: str = "HEAD") -> None:
+    run_git(repo, ["branch", "-f", branch, ref])
+
+
 def has_dirty_worktree(repo: Path) -> bool:
     result = run_git(repo, ["status", "--porcelain", "--untracked-files=all", *SYNC_EXCLUDES])
     return bool(result.stdout.strip())

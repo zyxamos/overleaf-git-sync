@@ -148,7 +148,7 @@ class SyncEngine:
             )
             info("Verification succeeded.")
 
-            remote_commit = git_ops.import_snapshot_to_branch(
+            git_ops.import_snapshot_to_branch(
                 self.repo_root,
                 verification_snapshot,
                 branch=config.git.remote_branch,
@@ -156,8 +156,14 @@ class SyncEngine:
                 message="overleaf: snapshot after push",
             )
             self._ensure_on_branch(config.git.main_branch, fallback_to_current=True)
-            self._write_metadata(config.sync.last_synced_file, git_ops.head_commit(self.repo_root))
-            self._write_metadata(config.sync.last_remote_snapshot_file, remote_commit)
+            synced_commit = git_ops.head_commit(self.repo_root)
+            git_ops.force_branch_to_ref(
+                self.repo_root,
+                config.git.remote_branch,
+                synced_commit,
+            )
+            self._write_metadata(config.sync.last_synced_file, synced_commit)
+            self._write_metadata(config.sync.last_remote_snapshot_file, synced_commit)
 
     def status(self) -> None:
         config = load_config(self.repo_root)
