@@ -9,7 +9,7 @@ from fnmatch import fnmatch
 from pathlib import Path
 
 from ol_ce_sync.errors import OlSyncError
-from ol_ce_sync.utils.paths import normalize_project_path
+from ol_ce_sync.utils.paths import is_special_sync_path, normalize_project_path
 
 
 @dataclass(frozen=True)
@@ -85,16 +85,35 @@ def compare_trees(expected: dict[str, bytes], actual: dict[str, bytes]) -> TreeD
 
 def reset_directory_from_snapshot(repo_root: Path, snapshot_dir: Path, patterns: list[str]) -> None:
     """Replace syncable repo contents with snapshot contents, preserving Git and metadata."""
-    for child in repo_root.iterdir():
-        name = child.name
-        if name in {".git", ".ol-sync"}:
+    for path in sorted(repo_root.rglob("*"), reverse=True):
+        rel = path.relative_to(repo_root).as_posix()
+        try:
+            normalized = normalize_project_path(rel)
+        except OlSyncError:
             continue
-        if is_ignored(name + ("/" if child.is_dir() else ""), patterns):
+        if not normalized:
             continue
-        if child.is_dir():
-            shutil.rmtree(child)
-        else:
-            child.unlink()
+        if is_special_sync_path(normalized):
+            continue
+        if is_ignored(normalized + ("/" if path.is_dir() else ""), patterns):
+            continue
+        if path.is_file() or path.is_symlink():
+            path.unlink()
+
+    for path in sorted(repo_root.rglob("*"), reverse=True):
+        if not path.is_dir():
+            continue
+        rel = path.relative_to(repo_root).as_posix()
+        try:
+            normalized = normalize_project_path(rel)
+        except OlSyncError:
+            continue
+        if not normalized or is_special_sync_path(normalized):
+            continue
+        if is_ignored(normalized + "/", patterns):
+            continue
+        if not any(path.iterdir()):
+            path.rmdir()
 
     for source in sorted(snapshot_dir.rglob("*")):
         if not source.is_file():

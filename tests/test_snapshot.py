@@ -6,7 +6,13 @@ from pathlib import Path
 import pytest
 
 from ol_ce_sync.errors import OlSyncError
-from ol_ce_sync.snapshot import collect_tree, compare_trees, is_ignored, safe_extract_zip
+from ol_ce_sync.snapshot import (
+    collect_tree,
+    compare_trees,
+    is_ignored,
+    reset_directory_from_snapshot,
+    safe_extract_zip,
+)
 from ol_ce_sync.utils.text import is_text_path
 
 
@@ -52,3 +58,38 @@ def test_text_binary_detection() -> None:
     assert not is_text_path("figure.png", b"hello")
     assert not is_text_path("blob.dat", b"\x00\x01")
     assert is_text_path("unknown.dat", b"hello")
+
+
+def test_reset_directory_from_snapshot_preserves_ignored_untracked_files(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    snapshot = tmp_path / "snapshot"
+    repo.mkdir()
+    snapshot.mkdir()
+
+    (repo / "Chapter").mkdir()
+    (repo / "Chapter" / "main.tex").write_text("old", encoding="utf-8")
+    (repo / "Chapter" / "scratch.aux").write_text("keep", encoding="utf-8")
+    (snapshot / "Chapter").mkdir()
+    (snapshot / "Chapter" / "main.tex").write_text("new", encoding="utf-8")
+
+    reset_directory_from_snapshot(repo, snapshot, ["*.aux"])
+
+    assert (repo / "Chapter" / "main.tex").read_text(encoding="utf-8") == "new"
+    assert (repo / "Chapter" / "scratch.aux").read_text(encoding="utf-8") == "keep"
+
+
+def test_reset_directory_from_snapshot_removes_empty_sync_dirs_only(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    snapshot = tmp_path / "snapshot"
+    repo.mkdir()
+    snapshot.mkdir()
+
+    (repo / "build").mkdir()
+    (repo / "build" / "keep.log").write_text("keep", encoding="utf-8")
+    (repo / "notes").mkdir()
+    (repo / "notes" / "draft.txt").write_text("drop", encoding="utf-8")
+
+    reset_directory_from_snapshot(repo, snapshot, ["*.log"])
+
+    assert (repo / "build" / "keep.log").exists()
+    assert not (repo / "notes").exists()
