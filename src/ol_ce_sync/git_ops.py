@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ol_ce_sync.errors import DirtyWorktreeError, GitError, SyncConflictError
-from ol_ce_sync.snapshot import reset_directory_from_snapshot
+from ol_ce_sync.snapshot import is_ignored, reset_directory_from_snapshot
 
 GIT_IDENTITY = ["-c", "user.name=ol", "-c", "user.email=ol@example.invalid"]
 SYNC_EXCLUDES = ["--", ".", ":(exclude).ol-sync"]
@@ -125,22 +125,33 @@ def is_ancestor(repo: Path, ancestor: str, descendant: str = "HEAD") -> bool:
     return result.returncode == 0
 
 
-def sync_pathspecs(repo: Path) -> list[str]:
+def sync_pathspecs(repo: Path, patterns: list[str] | None = None) -> list[str]:
+    ignore_patterns = patterns or []
     entries = {
         child.name
         for child in repo.iterdir()
         if child.name not in {".git", ".ol-sync"}
+        and not is_ignored(child.name + ("/" if child.is_dir() else ""), ignore_patterns)
     }
     tracked = run_git(repo, ["ls-files", "-z"], check=False).stdout.split("\0")
     for path in tracked:
         if not path:
             continue
-        entries.add(path.split("/", 1)[0])
+        top = path.split("/", 1)[0]
+        if is_ignored(top, ignore_patterns) or is_ignored(top + "/", ignore_patterns):
+            continue
+        entries.add(top)
     return sorted(entries)
 
 
-def commit_all(repo: Path, message: str, *, allow_empty: bool = False) -> str | None:
-    pathspecs = sync_pathspecs(repo)
+def commit_all(
+    repo: Path,
+    message: str,
+    *,
+    allow_empty: bool = False,
+    patterns: list[str] | None = None,
+) -> str | None:
+    pathspecs = sync_pathspecs(repo, patterns)
     if pathspecs:
         run_git(repo, ["add", "-A", "--", *pathspecs])
     if not has_staged_changes(repo):
@@ -167,7 +178,7 @@ def import_snapshot_to_branch(
         run_git(repo, ["switch", "--orphan", branch])
         run_git(repo, ["rm", "-r", "--cached", "."], check=False)
     reset_directory_from_snapshot(repo, snapshot_dir, patterns)
-    commit = commit_all(repo, message, allow_empty=True)
+    commit = commit_all(repo, message, allow_empty=True, patterns=patterns)
     remote_commit = commit or head_commit(repo)
     if original_branch and original_branch != branch:
         if branch_exists(repo, original_branch):

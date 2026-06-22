@@ -217,3 +217,29 @@ def ensure_default_gitignore(repo_root: Path) -> None:
     if existing_lines and existing_lines[-1].strip():
         separator += "\n"
     path.write_text(existing + separator + "\n".join(missing) + "\n", encoding="utf-8")
+
+
+def load_gitignore_patterns(repo_root: Path) -> list[str]:
+    path = repo_root / ".gitignore"
+    if not path.exists():
+        return []
+    patterns: list[str] = []
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or line.startswith("!"):
+            continue
+        if line.startswith("/"):
+            line = line[1:]
+        patterns.append(line)
+    return patterns
+
+
+def effective_ignore_patterns(config: Config) -> list[str]:
+    seen: set[str] = set()
+    merged: list[str] = []
+    for pattern in [*config.ignore.patterns, *load_gitignore_patterns(config.repo_root)]:
+        if pattern in seen:
+            continue
+        seen.add(pattern)
+        merged.append(pattern)
+    return merged

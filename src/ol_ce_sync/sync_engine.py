@@ -13,6 +13,7 @@ from ol_ce_sync.backends.base import OverleafBackend
 from ol_ce_sync.config import (
     Config,
     default_config,
+    effective_ignore_patterns,
     ensure_default_gitignore,
     load_config,
     write_default_config,
@@ -72,13 +73,14 @@ class SyncEngine:
         else:
             git_ops.ensure_git_repo(self.repo_root, config.git.main_branch)
         with SyncLock(config.resolve_repo_path(config.sync.lock_file)):
+            patterns = self._ignore_patterns(config)
             snapshot_dir = self._download_snapshot(config, backend)
             info(f"Importing initial remote snapshot into {config.git.remote_branch}...")
             remote_commit = git_ops.import_snapshot_to_branch(
                 self.repo_root,
                 snapshot_dir,
                 branch=config.git.remote_branch,
-                patterns=config.ignore.patterns,
+                patterns=patterns,
                 message="overleaf: initial snapshot",
             )
             self._ensure_on_branch(config.git.main_branch)
@@ -124,7 +126,7 @@ class SyncEngine:
                     )
 
             base = git_ops.head_commit(self.repo_root, config.git.remote_branch)
-            plan = build_push_plan(self.repo_root, base, config.ignore.patterns)
+            plan = build_push_plan(self.repo_root, base, self._ignore_patterns(config))
             print(format_push_plan(plan))
             if dry_run:
                 print("\nNo changes were applied because --dry-run was set.")
@@ -152,7 +154,7 @@ class SyncEngine:
                 self.repo_root,
                 verification_snapshot,
                 branch=config.git.remote_branch,
-                patterns=config.ignore.patterns,
+                patterns=self._ignore_patterns(config),
                 message="overleaf: snapshot after push",
             )
             self._ensure_on_branch(config.git.main_branch, fallback_to_current=True)
@@ -186,7 +188,7 @@ class SyncEngine:
 
         base = self._status_base(config)
         if base:
-            plan = build_push_plan(self.repo_root, base, config.ignore.patterns)
+            plan = build_push_plan(self.repo_root, base, self._ignore_patterns(config))
             print("Files changed locally since latest remote snapshot:")
             if plan:
                 for op in plan:
@@ -213,13 +215,14 @@ class SyncEngine:
     ) -> None:
         backend.authenticate()
         git_ops.require_clean_worktree(self.repo_root)
+        patterns = self._ignore_patterns(config)
         snapshot_dir = self._download_snapshot(config, backend)
         info(f"Importing remote snapshot into {config.git.remote_branch}...")
         remote_commit = git_ops.import_snapshot_to_branch(
             self.repo_root,
             snapshot_dir,
             branch=config.git.remote_branch,
-            patterns=config.ignore.patterns,
+            patterns=patterns,
             message="overleaf: snapshot",
         )
         current = git_ops.current_branch(self.repo_root)
@@ -341,9 +344,13 @@ class SyncEngine:
         return set(diff.added).issubset(deleted_paths)
 
     def _snapshot_diff_against_local(self, config: Config, snapshot_dir: Path):
-        expected = collect_tree(self.repo_root, config.ignore.patterns)
-        actual = collect_tree(snapshot_dir, config.ignore.patterns)
+        patterns = self._ignore_patterns(config)
+        expected = collect_tree(self.repo_root, patterns)
+        actual = collect_tree(snapshot_dir, patterns)
         return compare_trees(expected, actual)
+
+    def _ignore_patterns(self, config: Config) -> list[str]:
+        return effective_ignore_patterns(config)
 
     def _print_tree_diff(self, diff) -> None:
         if not diff.has_changes:

@@ -196,6 +196,25 @@ def test_pull_noop_returns_without_opening_merge(
     assert ("overleaf-remote", False) not in calls
 
 
+def test_pull_preserves_untracked_files_ignored_only_by_gitignore(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    prepare_synced_repo(repo)
+    write(repo / ".gitignore", "*.cachex\n")
+    commit_all(repo, "track gitignore rule")
+    write(repo / "build" / "local.cachex", "keep\n")
+    monkeypatch.setattr(
+        "ol_ce_sync.sync_engine.create_backend",
+        lambda config: FakeBackend({"main.tex": b"remote\n"}),
+    )
+
+    SyncEngine(repo).pull()
+
+    assert (repo / "build" / "local.cachex").read_text(encoding="utf-8") == "keep\n"
+
+
 def test_init_appends_default_gitignore_entries(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

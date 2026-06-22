@@ -127,3 +127,30 @@ def test_nested_directory_inside_parent_repo_is_not_treated_as_initialized_repo(
 
     assert git_ops.is_git_repo(nested)
     assert (nested / ".git").exists()
+
+
+def test_import_snapshot_ignores_gitignored_top_level_paths_when_staging(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    snapshot = tmp_path / "snapshot"
+    snapshot.mkdir()
+    write(snapshot / "main.tex", "hello")
+    init_repo(repo)
+    write(repo / ".gitignore", "build/\n*.log\n")
+    commit_all(repo, "track gitignore")
+    write(repo / "build" / "local.tmp", "keep")
+    write(repo / "main.log", "keep")
+
+    commit = git_ops.import_snapshot_to_branch(
+        repo,
+        snapshot,
+        branch="overleaf-remote",
+        patterns=[".ol-sync/", "build/", "*.log"],
+        message="overleaf: snapshot",
+    )
+
+    assert commit
+    assert (repo / "build" / "local.tmp").exists()
+    assert (repo / "main.log").exists()
