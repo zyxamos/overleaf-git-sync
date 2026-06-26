@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -13,6 +14,23 @@ from tests.conftest import commit_all, write
 
 def init_repo(repo: Path) -> None:
     git_ops.ensure_git_repo(repo, "main")
+
+
+def test_run_git_decodes_output_as_utf8(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = []
+    unicode_path = tmp_path / "中文路径"
+
+    def fake_run(cmd, **kwargs):
+        calls.append((cmd, kwargs))
+        return SimpleNamespace(stdout=f"{unicode_path}\n", stderr="", returncode=0)
+
+    monkeypatch.setattr(git_ops.subprocess, "run", fake_run)
+
+    result = git_ops.run_git(tmp_path, ["rev-parse", "--show-toplevel"])
+
+    assert result.stdout == f"{unicode_path}\n"
+    assert calls[0][1]["encoding"] == "utf-8"
+    assert calls[0][1]["errors"] == "replace"
 
 
 def test_import_snapshot_creates_remote_branch(tmp_path: Path) -> None:

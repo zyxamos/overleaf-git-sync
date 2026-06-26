@@ -28,7 +28,15 @@ def run_git(
     identity: bool = False,
 ) -> GitResult:
     cmd = ["git", *GIT_IDENTITY, *args] if identity else ["git", *args]
-    result = subprocess.run(cmd, cwd=repo, text=True, capture_output=True, check=False)
+    result = subprocess.run(
+        cmd,
+        cwd=repo,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        capture_output=True,
+        check=False,
+    )
     if check and result.returncode != 0:
         raise GitError(
             f"Git command failed: {' '.join(cmd)}\n{result.stderr.strip() or result.stdout.strip()}"
